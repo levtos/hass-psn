@@ -64,7 +64,7 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
 class PlaystationNetworkConfigFlow(ConfigFlow, domain=DOMAIN):
     """Handle a config flow for Playstation Network."""
 
-    VERSION = 1
+    VERSION = 3
     CONNECTION_CLASS = config_entries.CONN_CLASS_CLOUD_POLL
 
     reauth_entry: ConfigEntry | None = None
