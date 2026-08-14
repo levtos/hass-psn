@@ -85,7 +85,7 @@ class PlaystationNetworkConfigFlow(ConfigFlow, domain=DOMAIN):
         config_entry: ConfigEntry,
     ):
         """Get the options flow for this handler."""
-        return PlaystationNetworkOptionsFlowHandler(config_entry)
+        return PlaystationNetworkOptionsFlowHandler()
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
@@ -212,14 +212,14 @@ class PlaystationNetworkConfigFlow(ConfigFlow, domain=DOMAIN):
 class PlaystationNetworkOptionsFlowHandler(config_entries.OptionsFlow):
     """Handle Playstation Network options."""
 
-    def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
+    def __init__(self) -> None:
         """Initialize options flow."""
-        self.config_entry = config_entry
-        self.options = dict(config_entry.options)
+        self.options: dict[str, Any] = {}
 
-    async def async_step_init(self, user_input=None):  # pylint: disable=unused-argument
+    async def async_step_init(self, user_input=None):
         """Manage the options."""
-        return await self.async_step_entities()
+        self.options = dict(self.config_entry.options)
+        return await self.async_step_entities(user_input)
 
     async def async_step_entities(self, user_input=None):
         """Handle options initialized by the user."""
