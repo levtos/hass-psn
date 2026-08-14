@@ -1,5 +1,5 @@
 {
-  "name": "Playstation Network",
+  "name": "HA-PSN",
   "homeassistant": "2026.6.0",
   "render_readme": true,
   "zip_release": true,
