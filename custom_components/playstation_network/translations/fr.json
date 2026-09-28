@@ -29,7 +29,13 @@
       "entities": {
         "title": "Option Playstation Network",
         "data": {
-          "attributes_as_entities": "Créer des attributs supplémentaires en tant qu'entités"
+          "attributes_as_entities": "Créer des attributs supplémentaires en tant qu'entités",
+          "power_sensor": "Capteur de puissance",
+          "rest_mode_threshold": "Seuil de puissance du mode repos"
+        },
+        "data_description": {
+          "power_sensor": "Capteur de puissance facultatif utilisé pour détecter le mode repos lorsque le PSN signale explicitement le statut hors ligne.",
+          "rest_mode_threshold": "Le mode repos est détecté uniquement lorsque la puissance dépasse cette valeur."
         }
       }
     }

@@ -29,7 +29,13 @@
       "entities": {
         "title": "Playstation Network Options",
         "data": {
-          "attributes_as_entities": "Maak extra attributen als entiteiten"
+          "attributes_as_entities": "Maak extra attributen als entiteiten",
+          "power_sensor": "Vermogenssensor",
+          "rest_mode_threshold": "Vermogensdrempel voor rustmodus"
+        },
+        "data_description": {
+          "power_sensor": "Optionele vermogenssensor om de rustmodus te detecteren wanneer PSN expliciet offline meldt.",
+          "rest_mode_threshold": "De rustmodus wordt alleen gedetecteerd wanneer het vermogen hoger is dan deze waarde."
         }
       }
     }

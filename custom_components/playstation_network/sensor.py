@@ -11,10 +11,20 @@ from homeassistant.components.sensor import (
     SensorEntityDescription,
 )
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers.event import async_call_later, async_track_state_change_event
 from homeassistant.helpers.typing import StateType
 
-from .const import DOMAIN, PSN_COORDINATOR, CONF_EXPOSE_ATTRIBUTES_AS_ENTITIES
+from .const import (
+    CONF_EXPOSE_ATTRIBUTES_AS_ENTITIES,
+    CONF_POWER_SENSOR,
+    CONF_REST_MODE_THRESHOLD,
+    DEFAULT_REST_MODE_THRESHOLD,
+    DOMAIN,
+    POWER_SENSOR_DEBOUNCE_SECONDS,
+    PSN_COORDINATOR,
+)
 from .entity import PSNEntity
+from .status import derive_status, parse_power_value
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -45,19 +55,15 @@ def get_genres_as_string(coordinator_data: any) -> str:
 
 def get_status(coordinator_data: any) -> str:
     """Returns online status"""
-    match coordinator_data.get("platform").get("onlineStatus"):
-        case "online":
-            if (
-                coordinator_data.get("available") is True
-                and coordinator_data.get("title_metadata").get("npTitleId") is not None
-            ):
-                return "Playing"
-            else:
-                return "Online"
-        case "offline":
-            return "Offline"
-        case _:
-            return "Offline"
+    online_status = coordinator_data.get("platform", {}).get("onlineStatus")
+    has_active_title = (
+        online_status == "online"
+        and coordinator_data.get("available") is True
+        and coordinator_data.get("title_metadata", {}).get("npTitleId") is not None
+    )
+    return derive_status(
+        online_status, has_active_title, None, DEFAULT_REST_MODE_THRESHOLD
+    )
 
 
 def get_status_attr(coordinator_data: any) -> dict[str, str]:
@@ -196,7 +202,7 @@ PSN_SENSOR: tuple[PsnSensorEntityDescription, ...] = (
         device_class=SensorDeviceClass.ENUM,
         name="Status",
         icon="mdi:account-circle-outline",
-        options=["Online", "Offline", "Playing"],
+        options=["Online", "Offline", "Playing", "Rest Mode"],
         entity_registry_enabled_default=True,
         has_entity_name=True,
         unique_id="psn_status",
@@ -415,7 +421,10 @@ async def async_setup_entry(hass: HomeAssistant, config_entry, async_add_entitie
     coordinator = hass.data[DOMAIN][config_entry.entry_id][PSN_COORDINATOR]
 
     async_add_entities(
-        PsnSensor(coordinator, description) for description in PSN_SENSOR
+        PsnStatusSensor(coordinator, description, config_entry)
+        if description.key == "status"
+        else PsnSensor(coordinator, description)
+        for description in PSN_SENSOR
     )
 
     if config_entry.options.get(CONF_EXPOSE_ATTRIBUTES_AS_ENTITIES) is True:
@@ -463,6 +472,90 @@ class PsnSensor(PSNEntity, SensorEntity):
             return self.entity_description.attributes_fn(self.coordinator.data)
         if self.entity_description.key == "trophy_summary":
             return self.entity_description.attributes_fn(self.coordinator.data)
+
+
+class PsnStatusSensor(PsnSensor):
+    """PSN status sensor with optional local power evidence."""
+
+    def __init__(self, coordinator, description, config_entry) -> None:
+        """Initialize the status sensor."""
+        super().__init__(coordinator, description)
+        self._power_entity_id = config_entry.options.get(CONF_POWER_SENSOR)
+        self._power_value: float | None = None
+        self._cancel_power_update: Callable[[], None] | None = None
+        configured_threshold = parse_power_value(
+            config_entry.options.get(
+                CONF_REST_MODE_THRESHOLD, DEFAULT_REST_MODE_THRESHOLD
+            )
+        )
+        self._rest_mode_threshold = (
+            configured_threshold
+            if configured_threshold is not None and configured_threshold >= 0
+            else DEFAULT_REST_MODE_THRESHOLD
+        )
+
+    async def async_added_to_hass(self) -> None:
+        """Subscribe to changes from the configured power sensor."""
+        await super().async_added_to_hass()
+        if self._power_entity_id is None:
+            return
+
+        self._update_power_value()
+        self.async_on_remove(
+            async_track_state_change_event(
+                self.hass,
+                [self._power_entity_id],
+                self._handle_power_state_change,
+            )
+        )
+
+    async def async_will_remove_from_hass(self) -> None:
+        """Cancel a pending power update before removal."""
+        if self._cancel_power_update is not None:
+            self._cancel_power_update()
+            self._cancel_power_update = None
+        await super().async_will_remove_from_hass()
+
+    @callback
+    def _handle_power_state_change(self, _event) -> None:
+        """Debounce power changes before updating the status."""
+        if self._cancel_power_update is not None:
+            self._cancel_power_update()
+        self._cancel_power_update = async_call_later(
+            self.hass,
+            POWER_SENSOR_DEBOUNCE_SECONDS,
+            self._apply_power_state_change,
+        )
+
+    @callback
+    def _apply_power_state_change(self, _now) -> None:
+        """Apply the latest power state after the debounce period."""
+        self._cancel_power_update = None
+        self._update_power_value()
+        self.async_write_ha_state()
+
+    @callback
+    def _update_power_value(self) -> None:
+        """Cache valid numeric power evidence from Home Assistant state."""
+        state = self.hass.states.get(self._power_entity_id)
+        self._power_value = parse_power_value(state.state if state else None)
+
+    @property
+    def native_value(self) -> StateType:
+        """Return status using PSN-first precedence and stabilized power."""
+        data = self.coordinator.data
+        online_status = data.get("platform", {}).get("onlineStatus")
+        has_active_title = (
+            online_status == "online"
+            and data.get("available") is True
+            and data.get("title_metadata", {}).get("npTitleId") is not None
+        )
+        return derive_status(
+            online_status,
+            has_active_title,
+            self._power_value,
+            self._rest_mode_threshold,
+        )
 
 
 class PsnAttributeSensor(PSNEntity, SensorEntity):

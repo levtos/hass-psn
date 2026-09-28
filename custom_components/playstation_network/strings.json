@@ -22,5 +22,21 @@
       "already_configured": "[%key:common::config_flow::abort::already_configured_device%]",
       "already_in_progress": "[%key:common::config_flow::abort::already_in_progress%]"
     }
+  },
+  "options": {
+    "step": {
+      "entities": {
+        "title": "Playstation Network Options",
+        "data": {
+          "attributes_as_entities": "Create additional attributes as entities",
+          "power_sensor": "Power sensor",
+          "rest_mode_threshold": "Rest Mode power threshold"
+        },
+        "data_description": {
+          "power_sensor": "Optional power sensor used to detect Rest Mode when PSN explicitly reports offline.",
+          "rest_mode_threshold": "Rest Mode is detected only when power is greater than this value."
+        }
+      }
+    }
   }
 }

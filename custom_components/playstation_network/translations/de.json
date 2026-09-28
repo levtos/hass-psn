@@ -29,7 +29,13 @@
       "entities": {
         "title": "Playstation Network Optionen",
         "data": {
-          "attributes_as_entities": "Zusätzliche attribute als entitäten erstellen"
+          "attributes_as_entities": "Zusätzliche attribute als entitäten erstellen",
+          "power_sensor": "Leistungssensor",
+          "rest_mode_threshold": "Leistungsschwelle für den Ruhemodus"
+        },
+        "data_description": {
+          "power_sensor": "Optionaler Leistungssensor zur Erkennung des Ruhemodus, wenn PSN ausdrücklich offline meldet.",
+          "rest_mode_threshold": "Der Ruhemodus wird nur erkannt, wenn die Leistung größer als dieser Wert ist."
         }
       }
     }
