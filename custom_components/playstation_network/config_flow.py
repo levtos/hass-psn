@@ -1,13 +1,14 @@
 """Config flow for the Playstation Network integration."""
 
 import logging
-from typing import Any
 import re
+from typing import Any
 
 import voluptuous as vol
 from homeassistant import config_entries
+from homeassistant.components.sensor import SensorDeviceClass
 from homeassistant.config_entries import ConfigEntry, ConfigFlow
-from homeassistant.const import CONF_USERNAME
+from homeassistant.const import CONF_USERNAME, Platform
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.data_entry_flow import AbortFlow, FlowResult
 from homeassistant.exceptions import (
@@ -15,12 +16,20 @@ from homeassistant.exceptions import (
     ConfigEntryNotReady,
     HomeAssistantError,
 )
-from homeassistant.helpers import entity_registry as er, device_registry as dr
+from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers import selector
 from psnawp_api.core.psnawp_exceptions import PSNAWPAuthenticationError
 from psnawp_api.psnawp import PSNAWP
 from pyrate_limiter import Duration, Rate
 
-from .const import DOMAIN, CONF_EXPOSE_ATTRIBUTES_AS_ENTITIES
+from .const import (
+    CONF_EXPOSE_ATTRIBUTES_AS_ENTITIES,
+    CONF_POWER_SENSOR,
+    CONF_REST_MODE_THRESHOLD,
+    DEFAULT_REST_MODE_THRESHOLD,
+    DOMAIN,
+)
 from .coordinator import PsnCoordinator
 
 _LOGGER = logging.getLogger(__name__)
@@ -224,6 +233,7 @@ class PlaystationNetworkOptionsFlowHandler(config_entries.OptionsFlow):
     async def async_step_entities(self, user_input=None):
         """Handle options initialized by the user."""
         if user_input is not None:
+            self.options.pop(CONF_POWER_SENSOR, None)
             self.options.update(user_input)
             return await self._update_options()
 
@@ -237,6 +247,33 @@ class PlaystationNetworkOptionsFlowHandler(config_entries.OptionsFlow):
                             CONF_EXPOSE_ATTRIBUTES_AS_ENTITIES, False
                         ),
                     ): bool,
+                    vol.Optional(
+                        CONF_POWER_SENSOR,
+                        description={
+                            "suggested_value": self.config_entry.options.get(
+                                CONF_POWER_SENSOR
+                            )
+                        },
+                    ): selector.EntitySelector(
+                        selector.EntitySelectorConfig(
+                            domain=Platform.SENSOR,
+                            device_class=SensorDeviceClass.POWER,
+                        )
+                    ),
+                    vol.Required(
+                        CONF_REST_MODE_THRESHOLD,
+                        default=self.config_entry.options.get(
+                            CONF_REST_MODE_THRESHOLD,
+                            DEFAULT_REST_MODE_THRESHOLD,
+                        ),
+                    ): selector.NumberSelector(
+                        selector.NumberSelectorConfig(
+                            min=0,
+                            step=0.1,
+                            mode=selector.NumberSelectorMode.BOX,
+                            unit_of_measurement="W",
+                        )
+                    ),
                 }
             ),
             last_step=True,

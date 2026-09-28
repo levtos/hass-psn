@@ -29,7 +29,13 @@
       "entities": {
         "title": "Playstation Network Opções",
         "data": {
-          "attributes_as_entities": "Criar atributos adicionais como entidades"
+          "attributes_as_entities": "Criar atributos adicionais como entidades",
+          "power_sensor": "Sensor de potência",
+          "rest_mode_threshold": "Limite de potência do modo de repouso"
+        },
+        "data_description": {
+          "power_sensor": "Sensor de potência opcional usado para detectar o modo de repouso quando a PSN informa explicitamente que está offline.",
+          "rest_mode_threshold": "O modo de repouso só é detectado quando a potência é maior que este valor."
         }
       }
     }

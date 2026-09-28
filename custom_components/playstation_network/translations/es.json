@@ -29,7 +29,13 @@
       "entities": {
         "title": "Playstation Network Opciones",
         "data": {
-          "attributes_as_entities": "Crear atributos adicionales como entidades"
+          "attributes_as_entities": "Crear atributos adicionales como entidades",
+          "power_sensor": "Sensor de potencia",
+          "rest_mode_threshold": "Umbral de potencia del modo reposo"
+        },
+        "data_description": {
+          "power_sensor": "Sensor de potencia opcional para detectar el modo reposo cuando PSN indica explícitamente que está desconectado.",
+          "rest_mode_threshold": "El modo reposo solo se detecta cuando la potencia es superior a este valor."
         }
       }
     }
