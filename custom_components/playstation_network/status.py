@@ -24,14 +24,16 @@ def derive_status(
     has_active_title: bool,
     power_value: Any,
     threshold: float,
+    previous_status: str | None,
 ) -> str:
-    """Derive the canonical PSN status using PSN-first precedence."""
+    """Derive status using PSN precedence and runtime transition evidence."""
     if has_active_title:
         return "Playing"
     if online_status == "online":
         return "Online"
     if (
         online_status == "offline"
+        and previous_status in ("Online", "Playing", "Rest Mode")
         and (numeric_power := parse_power_value(power_value)) is not None
         and numeric_power > threshold
     ):

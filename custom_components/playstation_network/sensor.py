@@ -62,7 +62,11 @@ def get_status(coordinator_data: any) -> str:
         and coordinator_data.get("title_metadata", {}).get("npTitleId") is not None
     )
     return derive_status(
-        online_status, has_active_title, None, DEFAULT_REST_MODE_THRESHOLD
+        online_status,
+        has_active_title,
+        None,
+        DEFAULT_REST_MODE_THRESHOLD,
+        None,
     )
 
 
@@ -493,6 +497,7 @@ class PsnStatusSensor(PsnSensor):
             if configured_threshold is not None and configured_threshold >= 0
             else DEFAULT_REST_MODE_THRESHOLD
         )
+        self._status = get_status(coordinator.data)
 
     async def async_added_to_hass(self) -> None:
         """Subscribe to changes from the configured power sensor."""
@@ -501,6 +506,7 @@ class PsnStatusSensor(PsnSensor):
             return
 
         self._update_power_value()
+        self._update_status()
         self.async_on_remove(
             async_track_state_change_event(
                 self.hass,
@@ -532,6 +538,7 @@ class PsnStatusSensor(PsnSensor):
         """Apply the latest power state after the debounce period."""
         self._cancel_power_update = None
         self._update_power_value()
+        self._update_status()
         self.async_write_ha_state()
 
     @callback
@@ -540,9 +547,9 @@ class PsnStatusSensor(PsnSensor):
         state = self.hass.states.get(self._power_entity_id)
         self._power_value = parse_power_value(state.state if state else None)
 
-    @property
-    def native_value(self) -> StateType:
-        """Return status using PSN-first precedence and stabilized power."""
+    @callback
+    def _update_status(self) -> None:
+        """Update status while retaining only runtime transition evidence."""
         data = self.coordinator.data
         online_status = data.get("platform", {}).get("onlineStatus")
         has_active_title = (
@@ -550,12 +557,24 @@ class PsnStatusSensor(PsnSensor):
             and data.get("available") is True
             and data.get("title_metadata", {}).get("npTitleId") is not None
         )
-        return derive_status(
+        self._status = derive_status(
             online_status,
             has_active_title,
             self._power_value,
             self._rest_mode_threshold,
+            self._status,
         )
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        """Handle PSN updates and record runtime status transitions."""
+        self._update_status()
+        self.async_write_ha_state()
+
+    @property
+    def native_value(self) -> StateType:
+        """Return the status derived from PSN and runtime transition evidence."""
+        return self._status
 
 
 class PsnAttributeSensor(PSNEntity, SensorEntity):
