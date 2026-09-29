@@ -1,6 +1,6 @@
 # ADR 0001: Optional power evidence for PS5 Rest Mode
 
-- Status: accepted
+- Status: superseded by ADR 0002
 - Date: 2026-09-28
 - Corrected: 2026-09-28 for v0.9.1 cold-start handling
 - Scope: [Issue #4](https://github.com/Levtos/hass-psn/issues/4)

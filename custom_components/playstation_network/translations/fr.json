@@ -30,12 +30,14 @@
         "title": "Option Playstation Network",
         "data": {
           "attributes_as_entities": "Créer des attributs supplémentaires en tant qu'entités",
+          "ps5_host": "Hôte ou adresse IP de la PS5",
           "power_sensor": "Capteur de puissance",
-          "rest_mode_threshold": "Seuil de puissance du mode repos"
+          "rest_mode_threshold": "Seuil de puissance hors ligne"
         },
         "data_description": {
-          "power_sensor": "Capteur de puissance facultatif utilisé pour détecter le mode repos lorsque le PSN signale explicitement le statut hors ligne.",
-          "rest_mode_threshold": "Le mode repos est détecté uniquement lorsque la puissance dépasse cette valeur."
+          "ps5_host": "Hôte local ou adresse IP facultative de la PS5 pour l'état physique de la console. Les requêtes d'état ne nécessitent pas d'association.",
+          "power_sensor": "Capteur de puissance facultatif servant de preuve de secours qu'une PS5 inaccessible est éteinte.",
+          "rest_mode_threshold": "Une PS5 inaccessible est considérée hors ligne uniquement lorsque la puissance est inférieure ou égale à cette valeur."
         }
       }
     }

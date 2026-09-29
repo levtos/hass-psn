@@ -25,6 +25,7 @@ from pyrate_limiter import Duration, Rate
 
 from .const import (
     CONF_EXPOSE_ATTRIBUTES_AS_ENTITIES,
+    CONF_PS5_HOST,
     CONF_POWER_SENSOR,
     CONF_REST_MODE_THRESHOLD,
     DEFAULT_REST_MODE_THRESHOLD,
@@ -233,6 +234,7 @@ class PlaystationNetworkOptionsFlowHandler(config_entries.OptionsFlow):
     async def async_step_entities(self, user_input=None):
         """Handle options initialized by the user."""
         if user_input is not None:
+            self.options.pop(CONF_PS5_HOST, None)
             self.options.pop(CONF_POWER_SENSOR, None)
             self.options.update(user_input)
             return await self._update_options()
@@ -247,6 +249,18 @@ class PlaystationNetworkOptionsFlowHandler(config_entries.OptionsFlow):
                             CONF_EXPOSE_ATTRIBUTES_AS_ENTITIES, False
                         ),
                     ): bool,
+                    vol.Optional(
+                        CONF_PS5_HOST,
+                        description={
+                            "suggested_value": self.config_entry.options.get(
+                                CONF_PS5_HOST
+                            )
+                        },
+                    ): selector.TextSelector(
+                        selector.TextSelectorConfig(
+                            type=selector.TextSelectorType.TEXT,
+                        )
+                    ),
                     vol.Optional(
                         CONF_POWER_SENSOR,
                         description={
@@ -281,6 +295,10 @@ class PlaystationNetworkOptionsFlowHandler(config_entries.OptionsFlow):
 
     async def _update_options(self):
         """Update config entry options."""
+        if host := self.options.get(CONF_PS5_HOST):
+            self.options[CONF_PS5_HOST] = host.strip()
+        if not self.options.get(CONF_PS5_HOST):
+            self.options.pop(CONF_PS5_HOST, None)
         if self.options.get(CONF_EXPOSE_ATTRIBUTES_AS_ENTITIES) is False:
             self._remove_unused_entities()
 

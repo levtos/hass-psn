@@ -38,12 +38,14 @@
         "title": "Playstation Network Options",
         "data": {
           "attributes_as_entities": "Create additional attributes as entities",
+          "ps5_host": "PS5 host or IP address",
           "power_sensor": "Power sensor",
-          "rest_mode_threshold": "Rest Mode power threshold"
+          "rest_mode_threshold": "Offline power threshold"
         },
         "data_description": {
-          "power_sensor": "Optional power sensor used to detect Rest Mode when PSN explicitly reports offline.",
-          "rest_mode_threshold": "Rest Mode is detected only when power is greater than this value."
+          "ps5_host": "Optional local PS5 host or IP address used for physical Console Status. Pairing is not required for status queries.",
+          "power_sensor": "Optional power sensor used as fallback evidence that an unreachable PS5 is offline.",
+          "rest_mode_threshold": "An unreachable PS5 is considered offline only when power is at or below this value."
         }
       }
     }

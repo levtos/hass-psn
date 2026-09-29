@@ -9,7 +9,7 @@
   "integration_type": "service",
   "iot_class": "cloud_polling",
   "issue_tracker": "https://github.com/Levtos/hass-psn/issues",
-  "requirements": ["PSNAWP==3.0.3", "pyrate-limiter==4.1.0"],
+  "requirements": ["PSNAWP==3.0.3", "pyrate-limiter==4.1.0", "ps5-remoteplay==0.1.8"],
   "ssdp": [],
-  "version": "0.9.1"
+  "version": "0.10.0"
 }

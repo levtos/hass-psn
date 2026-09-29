@@ -16,7 +16,15 @@ from psnawp_api.core.psnawp_exceptions import PSNAWPAuthenticationError
 from psnawp_api.psnawp import PSNAWP
 from pyrate_limiter import Duration, Rate
 
-from .const import DOMAIN, PSN_API, PSN_COORDINATOR, CONF_EXPOSE_ATTRIBUTES_AS_ENTITIES
+from .console_coordinator import Ps5ConsoleCoordinator
+from .const import (
+    CONF_EXPOSE_ATTRIBUTES_AS_ENTITIES,
+    CONF_PS5_HOST,
+    DOMAIN,
+    PS5_COORDINATOR,
+    PSN_API,
+    PSN_COORDINATOR,
+)
 from .coordinator import PsnCoordinator
 
 PLATFORMS: list[Platform] = [
@@ -50,14 +58,21 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     except Exception as ex:
         raise ConfigEntryNotReady(ex) from ex
 
+    ps5_coordinator = None
+    if ps5_host := (entry.options.get(CONF_PS5_HOST) or "").strip():
+        ps5_coordinator = Ps5ConsoleCoordinator(hass, ps5_host)
+
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = {
         PSN_COORDINATOR: coordinator,
+        PS5_COORDINATOR: ps5_coordinator,
         PSN_API: psn,
     }
 
     if entry.unique_id is None:
         hass.config_entries.async_update_entry(entry, unique_id=user.online_id)
     await coordinator.async_config_entry_first_refresh()
+    if ps5_coordinator is not None:
+        await ps5_coordinator.async_config_entry_first_refresh()
 
     hass.async_create_task(
         discovery.async_load_platform(

@@ -30,12 +30,14 @@
         "title": "Playstation Network Opções",
         "data": {
           "attributes_as_entities": "Criar atributos adicionais como entidades",
+          "ps5_host": "Host ou endereço IP do PS5",
           "power_sensor": "Sensor de potência",
-          "rest_mode_threshold": "Limite de potência do modo de repouso"
+          "rest_mode_threshold": "Limite de potência offline"
         },
         "data_description": {
-          "power_sensor": "Sensor de potência opcional usado para detectar o modo de repouso quando a PSN informa explicitamente que está offline.",
-          "rest_mode_threshold": "O modo de repouso só é detectado quando a potência é maior que este valor."
+          "ps5_host": "Host local ou endereço IP opcional do PS5 para o estado físico do console. Consultas de estado não exigem pareamento.",
+          "power_sensor": "Sensor de potência opcional como evidência alternativa de que um PS5 inacessível está desligado.",
+          "rest_mode_threshold": "Um PS5 inacessível só é considerado offline quando a potência é menor ou igual a este valor."
         }
       }
     }
