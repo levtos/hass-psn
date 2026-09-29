@@ -75,6 +75,8 @@ The physical status follows these rules:
 - No local response plus valid power at or below the configured threshold -> `Offline`.
 - No local response plus high, missing, or invalid power -> entity unavailable.
 
+After previously valid local evidence, a temporary discovery gap keeps the last Console Status for up to 45 seconds. New local `AWAKE` or `STANDBY` evidence is applied immediately; after the grace expires, the normal power fallback and availability rules resume. This grace is runtime-only and is not persisted across Home Assistant restarts.
+
 The optional power sensor is fallback evidence for `Offline`; it does not detect `Rest Mode`. PSN alone never creates a positive physical console state, so using the PlayStation mobile app cannot make an unreachable console appear online. Without a configured PS5 host, the existing PSN entities continue to work unchanged; the Console Status entity requires conclusive local or low-power evidence to become available.
 
 ## Messages

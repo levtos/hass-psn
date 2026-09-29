@@ -4,6 +4,7 @@ import logging
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
+from time import monotonic
 
 from homeassistant.components.sensor import (
     SensorDeviceClass,
@@ -24,7 +25,11 @@ from .const import (
     PS5_COORDINATOR,
     PSN_COORDINATOR,
 )
-from .console_status import derive_console_status, parse_power_value
+from .console_status import (
+    CONSOLE_STATUS_TRANSITION_GRACE_SECONDS,
+    derive_console_status,
+    parse_power_value,
+)
 from .entity import PSNEntity
 from .status import derive_status
 
@@ -505,6 +510,9 @@ class PsnConsoleStatusSensor(PsnSensor):
         self._power_entity_id = config_entry.options.get(CONF_POWER_SENSOR)
         self._power_value: float | None = None
         self._cancel_power_update: Callable[[], None] | None = None
+        self._cancel_transition_grace: Callable[[], None] | None = None
+        self._last_local_console_status: str | None = None
+        self._local_evidence_missing_since: float | None = None
         configured_threshold = parse_power_value(
             config_entry.options.get(
                 CONF_REST_MODE_THRESHOLD, DEFAULT_REST_MODE_THRESHOLD
@@ -544,6 +552,9 @@ class PsnConsoleStatusSensor(PsnSensor):
         if self._cancel_power_update is not None:
             self._cancel_power_update()
             self._cancel_power_update = None
+        if self._cancel_transition_grace is not None:
+            self._cancel_transition_grace()
+            self._cancel_transition_grace = None
         await super().async_will_remove_from_hass()
 
     @callback
@@ -587,12 +598,58 @@ class PsnConsoleStatusSensor(PsnSensor):
             local_status = self._console_coordinator.data
             if local_status is not None:
                 local_status = getattr(local_status, "value", local_status)
+        if local_status in ("AWAKE", "STANDBY"):
+            self._end_transition_grace()
+            self._status = derive_console_status(
+                local_status,
+                has_active_title,
+                self._power_value,
+                self._rest_mode_threshold,
+            )
+            self._last_local_console_status = self._status
+            return
+
+        missing_for = None
+        if self._last_local_console_status is not None:
+            now = monotonic()
+            if self._local_evidence_missing_since is None:
+                self._local_evidence_missing_since = now
+                self._cancel_transition_grace = async_call_later(
+                    self.hass,
+                    CONSOLE_STATUS_TRANSITION_GRACE_SECONDS,
+                    self._expire_transition_grace,
+                )
+            missing_for = now - self._local_evidence_missing_since
         self._status = derive_console_status(
             local_status,
             has_active_title,
             self._power_value,
             self._rest_mode_threshold,
+            self._last_local_console_status,
+            missing_for,
         )
+
+    @callback
+    def _end_transition_grace(self) -> None:
+        """End any transition grace when local evidence returns."""
+        if self._cancel_transition_grace is not None:
+            self._cancel_transition_grace()
+            self._cancel_transition_grace = None
+        self._local_evidence_missing_since = None
+
+    @callback
+    def _expire_transition_grace(self, _now) -> None:
+        """Re-evaluate fallback evidence when the transition grace expires."""
+        self._cancel_transition_grace = None
+        if self._local_evidence_missing_since is not None:
+            self._local_evidence_missing_since = min(
+                self._local_evidence_missing_since,
+                monotonic() - CONSOLE_STATUS_TRANSITION_GRACE_SECONDS,
+            )
+        if self._power_entity_id is not None:
+            self._update_power_value()
+        self._update_status()
+        self.async_write_ha_state()
 
     @callback
     def _handle_coordinator_update(self) -> None:
