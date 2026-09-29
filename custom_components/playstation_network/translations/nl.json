@@ -30,12 +30,14 @@
         "title": "Playstation Network Options",
         "data": {
           "attributes_as_entities": "Maak extra attributen als entiteiten",
+          "ps5_host": "PS5-host of IP-adres",
           "power_sensor": "Vermogenssensor",
-          "rest_mode_threshold": "Vermogensdrempel voor rustmodus"
+          "rest_mode_threshold": "Vermogensdrempel voor offline"
         },
         "data_description": {
-          "power_sensor": "Optionele vermogenssensor om de rustmodus te detecteren wanneer PSN expliciet offline meldt.",
-          "rest_mode_threshold": "De rustmodus wordt alleen gedetecteerd wanneer het vermogen hoger is dan deze waarde."
+          "ps5_host": "Optionele lokale PS5-host of IP-adres voor de fysieke consolestatus. Koppelen is niet nodig voor statusvragen.",
+          "power_sensor": "Optionele vermogenssensor als reservebewijs dat een onbereikbare PS5 uitgeschakeld is.",
+          "rest_mode_threshold": "Een onbereikbare PS5 geldt alleen als offline wanneer het vermogen kleiner dan of gelijk aan deze waarde is."
         }
       }
     }

@@ -30,12 +30,14 @@
         "title": "Playstation Network Optionen",
         "data": {
           "attributes_as_entities": "Zusätzliche attribute als entitäten erstellen",
+          "ps5_host": "PS5-Host oder IP-Adresse",
           "power_sensor": "Leistungssensor",
-          "rest_mode_threshold": "Leistungsschwelle für den Ruhemodus"
+          "rest_mode_threshold": "Leistungsschwelle für Offline"
         },
         "data_description": {
-          "power_sensor": "Optionaler Leistungssensor zur Erkennung des Ruhemodus, wenn PSN ausdrücklich offline meldet.",
-          "rest_mode_threshold": "Der Ruhemodus wird nur erkannt, wenn die Leistung größer als dieser Wert ist."
+          "ps5_host": "Optionaler lokaler PS5-Host oder eine IP-Adresse für den physischen Konsolenstatus. Für Statusabfragen ist kein Pairing erforderlich.",
+          "power_sensor": "Optionaler Leistungssensor als Fallback-Nachweis, dass eine nicht erreichbare PS5 ausgeschaltet ist.",
+          "rest_mode_threshold": "Eine nicht erreichbare PS5 gilt nur bei einer Leistung kleiner oder gleich diesem Wert als ausgeschaltet."
         }
       }
     }

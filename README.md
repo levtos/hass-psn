@@ -55,11 +55,27 @@ To obtain an NPSSO token:
 
 After the device is configured, the integration exposes:
 
-- PlayStation Network status and trophy sensors.
+- A PSN-oriented **Status** sensor (`Playing`, `Online`, or `Offline`).
+- A separate physical **Console Status** sensor.
+- PlayStation Network trophy sensors.
 - A media player with the current game title and cover art.
 - Optional top-level sensors for title metadata such as platform, genre, content rating, play count, play duration, and trophy progress.
 
 Enable **Expose attributes as entities** in the integration options to create the additional metadata sensors, including **Genres**.
+
+### Physical Console Status
+
+Set an optional **PS5 host or IP address** in the integration options to query the console directly on the local network. A fixed or DHCP-reserved address is recommended. The status query uses `ps5-remoteplay` and does not require Remote Play pairing or credentials.
+
+The physical status follows these rules:
+
+- Local `STANDBY` -> `Rest Mode`.
+- Local `AWAKE` with an active PSN title -> `Playing`.
+- Local `AWAKE` without an active title -> `Online`.
+- No local response plus valid power at or below the configured threshold -> `Offline`.
+- No local response plus high, missing, or invalid power -> entity unavailable.
+
+The optional power sensor is fallback evidence for `Offline`; it does not detect `Rest Mode`. PSN alone never creates a positive physical console state, so using the PlayStation mobile app cannot make an unreachable console appear online. Without a configured PS5 host, the existing PSN entities continue to work unchanged; the Console Status entity requires conclusive local or low-power evidence to become available.
 
 ## Messages
 

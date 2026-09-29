@@ -21,10 +21,12 @@ from .const import (
     DEFAULT_REST_MODE_THRESHOLD,
     DOMAIN,
     POWER_SENSOR_DEBOUNCE_SECONDS,
+    PS5_COORDINATOR,
     PSN_COORDINATOR,
 )
+from .console_status import derive_console_status, parse_power_value
 from .entity import PSNEntity
-from .status import derive_status, parse_power_value
+from .status import derive_status
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -61,13 +63,7 @@ def get_status(coordinator_data: any) -> str:
         and coordinator_data.get("available") is True
         and coordinator_data.get("title_metadata", {}).get("npTitleId") is not None
     )
-    return derive_status(
-        online_status,
-        has_active_title,
-        None,
-        DEFAULT_REST_MODE_THRESHOLD,
-        None,
-    )
+    return derive_status(online_status, has_active_title)
 
 
 def get_status_attr(coordinator_data: any) -> dict[str, str]:
@@ -206,7 +202,7 @@ PSN_SENSOR: tuple[PsnSensorEntityDescription, ...] = (
         device_class=SensorDeviceClass.ENUM,
         name="Status",
         icon="mdi:account-circle-outline",
-        options=["Online", "Offline", "Playing", "Rest Mode"],
+        options=["Online", "Offline", "Playing"],
         entity_registry_enabled_default=True,
         has_entity_name=True,
         unique_id="psn_status",
@@ -234,6 +230,17 @@ PSN_SENSOR: tuple[PsnSensorEntityDescription, ...] = (
         unique_id="about_me",
         value_fn=lambda data: data.get("profile").get("aboutMe"),
     ),
+)
+
+CONSOLE_STATUS_SENSOR = PsnSensorEntityDescription(
+    key="console_status",
+    device_class=SensorDeviceClass.ENUM,
+    name="Console Status",
+    icon="mdi:sony-playstation",
+    options=["Online", "Offline", "Playing", "Rest Mode"],
+    entity_registry_enabled_default=True,
+    has_entity_name=True,
+    unique_id="psn_console_status",
 )
 
 PSN_ADDITIONAL_SENSOR: tuple[PsnSensorEntityDescription, ...] = (
@@ -423,12 +430,20 @@ PSN_ADDITIONAL_SENSOR: tuple[PsnSensorEntityDescription, ...] = (
 async def async_setup_entry(hass: HomeAssistant, config_entry, async_add_entities):
     """Add sensors for passed config_entry in HA."""
     coordinator = hass.data[DOMAIN][config_entry.entry_id][PSN_COORDINATOR]
+    console_coordinator = hass.data[DOMAIN][config_entry.entry_id][PS5_COORDINATOR]
 
     async_add_entities(
-        PsnStatusSensor(coordinator, description, config_entry)
-        if description.key == "status"
-        else PsnSensor(coordinator, description)
-        for description in PSN_SENSOR
+        PsnSensor(coordinator, description) for description in PSN_SENSOR
+    )
+    async_add_entities(
+        [
+            PsnConsoleStatusSensor(
+                coordinator,
+                console_coordinator,
+                CONSOLE_STATUS_SENSOR,
+                config_entry,
+            )
+        ]
     )
 
     if config_entry.options.get(CONF_EXPOSE_ATTRIBUTES_AS_ENTITIES) is True:
@@ -478,12 +493,15 @@ class PsnSensor(PSNEntity, SensorEntity):
             return self.entity_description.attributes_fn(self.coordinator.data)
 
 
-class PsnStatusSensor(PsnSensor):
-    """PSN status sensor with optional local power evidence."""
+class PsnConsoleStatusSensor(PsnSensor):
+    """Physical PS5 status from local and optional power evidence."""
 
-    def __init__(self, coordinator, description, config_entry) -> None:
-        """Initialize the status sensor."""
+    def __init__(
+        self, coordinator, console_coordinator, description, config_entry
+    ) -> None:
+        """Initialize the console status sensor."""
         super().__init__(coordinator, description)
+        self._console_coordinator = console_coordinator
         self._power_entity_id = config_entry.options.get(CONF_POWER_SENSOR)
         self._power_value: float | None = None
         self._cancel_power_update: Callable[[], None] | None = None
@@ -497,23 +515,29 @@ class PsnStatusSensor(PsnSensor):
             if configured_threshold is not None and configured_threshold >= 0
             else DEFAULT_REST_MODE_THRESHOLD
         )
-        self._status = get_status(coordinator.data)
+        self._status: str | None = None
+        self._update_status()
 
     async def async_added_to_hass(self) -> None:
-        """Subscribe to changes from the configured power sensor."""
+        """Subscribe to independent local-console and power updates."""
         await super().async_added_to_hass()
-        if self._power_entity_id is None:
-            return
-
-        self._update_power_value()
-        self._update_status()
-        self.async_on_remove(
-            async_track_state_change_event(
-                self.hass,
-                [self._power_entity_id],
-                self._handle_power_state_change,
+        if self._console_coordinator is not None:
+            self.async_on_remove(
+                self._console_coordinator.async_add_listener(
+                    self._handle_console_update
+                )
             )
-        )
+
+        if self._power_entity_id is not None:
+            self._update_power_value()
+            self._update_status()
+            self.async_on_remove(
+                async_track_state_change_event(
+                    self.hass,
+                    [self._power_entity_id],
+                    self._handle_power_state_change,
+                )
+            )
 
     async def async_will_remove_from_hass(self) -> None:
         """Cancel a pending power update before removal."""
@@ -549,31 +573,47 @@ class PsnStatusSensor(PsnSensor):
 
     @callback
     def _update_status(self) -> None:
-        """Update status while retaining only runtime transition evidence."""
+        """Update physical console status from independent evidence."""
         data = self.coordinator.data
         online_status = data.get("platform", {}).get("onlineStatus")
         has_active_title = (
-            online_status == "online"
+            self.coordinator.last_update_success
+            and online_status == "online"
             and data.get("available") is True
             and data.get("title_metadata", {}).get("npTitleId") is not None
         )
-        self._status = derive_status(
-            online_status,
+        local_status = None
+        if self._console_coordinator is not None:
+            local_status = self._console_coordinator.data
+            if local_status is not None:
+                local_status = getattr(local_status, "value", local_status)
+        self._status = derive_console_status(
+            local_status,
             has_active_title,
             self._power_value,
             self._rest_mode_threshold,
-            self._status,
         )
 
     @callback
     def _handle_coordinator_update(self) -> None:
-        """Handle PSN updates and record runtime status transitions."""
+        """Use PSN only to distinguish Playing while locally awake."""
+        self._update_status()
+        self.async_write_ha_state()
+
+    @callback
+    def _handle_console_update(self) -> None:
+        """Handle a local PS5 status update."""
         self._update_status()
         self.async_write_ha_state()
 
     @property
+    def available(self) -> bool:
+        """Return availability only when physical evidence is conclusive."""
+        return self._status is not None
+
+    @property
     def native_value(self) -> StateType:
-        """Return the status derived from PSN and runtime transition evidence."""
+        """Return the physical console status."""
         return self._status
 
 
