@@ -31,6 +31,10 @@ The PS5 host is optional per config entry. Local polling uses its own coordinato
 
 The existing optional power sensor and threshold remain configuration options, but power is only fallback evidence for `Offline`. It cannot prove `Rest Mode` or a positive console state.
 
+### Technical transition grace
+
+[Issue #9](https://github.com/Levtos/hass-psn/issues/9) adds a runtime-only 45-second transition grace after previously valid local evidence is lost. During that interval the last locally supported Console Status is retained and power fallback is deferred. Fresh `AWAKE` or `STANDBY` evidence ends the grace immediately. If local evidence remains absent when the monotonic grace expires, the normal power fallback and availability rules resume. This is short-lived discovery smoothing, not Core Contracts `held` semantics, and it is not persisted across restarts.
+
 ## Consequences
 
 - Existing Status unique IDs and PSN-only installations remain compatible.

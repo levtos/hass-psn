@@ -16,6 +16,7 @@ SPEC.loader.exec_module(MODULE)
 
 derive_console_status = MODULE.derive_console_status
 parse_power_value = MODULE.parse_power_value
+TRANSITION_GRACE = MODULE.CONSOLE_STATUS_TRANSITION_GRACE_SECONDS
 
 
 def test_awake_with_psn_offline_and_no_title_is_online() -> None:
@@ -73,3 +74,56 @@ def test_invalid_power_values_are_not_evidence() -> None:
     ):
         assert parse_power_value(power) is None
         assert derive_console_status(None, False, power, 10.0) is None
+
+
+def test_online_is_held_during_temporary_local_evidence_loss() -> None:
+    assert derive_console_status(None, False, 1, 10.0, "Online", 30.0) == "Online"
+
+
+def test_playing_is_held_during_temporary_local_evidence_loss() -> None:
+    assert derive_console_status(None, False, 1, 10.0, "Playing", 30.0) == "Playing"
+
+
+def test_rest_mode_is_held_during_temporary_local_evidence_loss() -> None:
+    assert derive_console_status(None, False, 1, 10.0, "Rest Mode", 30.0) == "Rest Mode"
+
+
+def test_standby_ends_online_grace_immediately() -> None:
+    assert (
+        derive_console_status("STANDBY", False, 1, 10.0, "Online", 5.0) == "Rest Mode"
+    )
+
+
+def test_awake_ends_rest_mode_grace_immediately() -> None:
+    assert derive_console_status("AWAKE", False, 1, 10.0, "Rest Mode", 5.0) == "Online"
+    assert derive_console_status("AWAKE", True, 1, 10.0, "Rest Mode", 5.0) == "Playing"
+
+
+def test_expired_grace_with_low_power_is_offline() -> None:
+    assert (
+        derive_console_status(None, False, 1, 10.0, "Online", TRANSITION_GRACE)
+        == "Offline"
+    )
+
+
+def test_expired_grace_with_high_power_is_unavailable() -> None:
+    assert (
+        derive_console_status(None, False, 100, 10.0, "Online", TRANSITION_GRACE)
+        is None
+    )
+
+
+def test_expired_grace_without_power_is_unavailable() -> None:
+    assert (
+        derive_console_status(None, False, None, 10.0, "Rest Mode", TRANSITION_GRACE)
+        is None
+    )
+
+
+def test_initial_missing_local_evidence_does_not_start_grace() -> None:
+    assert derive_console_status(None, False, 1, 10.0) == "Offline"
+    assert derive_console_status(None, False, None, 10.0) is None
+
+
+def test_non_local_fallback_status_does_not_start_grace() -> None:
+    assert derive_console_status(None, False, 1, 10.0, "Offline", 1.0) == "Offline"
