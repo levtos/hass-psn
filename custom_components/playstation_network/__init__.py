@@ -12,7 +12,11 @@ from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import discovery
 from homeassistant.helpers import entity_registry as er
-from psnawp_api.core.psnawp_exceptions import PSNAWPAuthenticationError
+from psnawp_api.core.psnawp_exceptions import (
+    PSNAWPAuthenticationError,
+    PSNAWPInvalidTokenError,
+    PSNAWPUnauthorizedError,
+)
 from psnawp_api.psnawp import PSNAWP
 from pyrate_limiter import Duration, Rate
 
@@ -44,7 +48,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         npsso = entry.data.get("npsso")
         rate = Rate(300, Duration.MINUTE * 15)
         psn = PSNAWP(npsso, rate_limit=rate)
-    except PSNAWPAuthenticationError as error:
+    except (
+        PSNAWPAuthenticationError,
+        PSNAWPInvalidTokenError,
+        PSNAWPUnauthorizedError,
+    ) as error:
         raise ConfigEntryAuthFailed(error) from error
     except Exception as ex:
         raise ConfigEntryNotReady(ex) from ex
@@ -52,8 +60,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     try:
         user = await hass.async_add_executor_job(lambda: psn.user(online_id="me"))
         client = psn.me()
-        coordinator = PsnCoordinator(hass, psn, user, client)
-    except PSNAWPAuthenticationError as error:
+        coordinator = PsnCoordinator(hass, psn, user, client, config_entry=entry)
+    except (
+        PSNAWPAuthenticationError,
+        PSNAWPInvalidTokenError,
+        PSNAWPUnauthorizedError,
+    ) as error:
         raise ConfigEntryAuthFailed(error) from error
     except Exception as ex:
         raise ConfigEntryNotReady(ex) from ex

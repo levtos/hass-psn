@@ -56,8 +56,12 @@ class MediaPlayer(PSNEntity, MediaPlayerEntity):
     def __init__(self, coordinator) -> None:
         """Initialize PSN MediaPlayer."""
         super().__init__(coordinator)
-        self.data = self.coordinator.data
         self._attr_has_entity_name = True
+
+    @property
+    def data(self):
+        """Read the current complete snapshot after each coordinator refresh."""
+        return self.coordinator.data
 
     @property
     def icon(self):

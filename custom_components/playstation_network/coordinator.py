@@ -1,30 +1,62 @@
-"""The IntelliFire integration."""
+"""Fetch complete PSN snapshots and recover from temporary service failures."""
 
 from __future__ import annotations
 
+import asyncio
 import logging
+from collections.abc import Callable
 from typing import Any
 
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.update_coordinator import (
     DataUpdateCoordinator,
     UpdateFailed,
 )
-from psnawp_api.core.psnawp_exceptions import PSNAWPAuthenticationError
+from psnawp_api.core.psnawp_exceptions import (
+    PSNAWPAuthenticationError,
+    PSNAWPForbiddenError,
+    PSNAWPInvalidTokenError,
+    PSNAWPServerError,
+    PSNAWPTooManyRequestsError,
+    PSNAWPUnauthorizedError,
+)
+from requests.exceptions import ChunkedEncodingError, SSLError, Timeout
+from requests.exceptions import ConnectionError as RequestsConnectionError
 
 from .const import DEVICE_SCAN_INTERVAL, DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
+RETRY_DELAY_SECONDS = 2
+# PSNAWP 3.0.3 discards Retry-After; use the configured 15-minute rate window.
+RATE_LIMIT_DELAY_SECONDS = 15 * 60
+TRANSIENT_ERRORS = (
+    ConnectionError,
+    TimeoutError,
+    RequestsConnectionError,
+    Timeout,
+    ChunkedEncodingError,
+    PSNAWPServerError,
+)
 
 
 class PsnCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     """Data update coordinator for PSN."""
 
-    def __init__(self, hass: HomeAssistant, api, user, client) -> None:
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        api,
+        user,
+        client,
+        *,
+        config_entry: ConfigEntry | None = None,
+    ) -> None:
         """Initialize the Coordinator."""
         super().__init__(
             hass,
+            config_entry=config_entry,
             name=DOMAIN,
             logger=_LOGGER,
             update_interval=DEVICE_SCAN_INTERVAL,
@@ -54,91 +86,117 @@ class PsnCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         }
 
     async def _async_update_data(self) -> dict[str, Any]:
-        """Get the latest data from the PSN."""
+        """Publish only a complete snapshot; HA owns failure state and log deduplication."""
+        self._retry_available = True
+        self._operation = "user.online_id"
+        data = self.data.copy()
         try:
-            self.data["username"] = self.user.online_id
-            self.data["profile"] = await self.hass.async_add_executor_job(
-                self.user.profile
+            data["username"] = await self._async_request(
+                "user.online_id", lambda: self.user.online_id
             )
-            self.data["presence"] = await self.hass.async_add_executor_job(
-                self.user.get_presence
+            data["profile"] = await self._async_request(
+                "user.profile", self.user.profile
             )
-            self.data["available"] = (
-                self.data["presence"].get("basicPresence").get("availability")
-                == "availableToPlay"
+            data["presence"] = await self._async_request(
+                "user.get_presence", self.user.get_presence
             )
-            self.data["platform"] = (
-                self.data["presence"].get("basicPresence").get("primaryPlatformInfo")
-            )
-            try:
-                self.data["title_metadata"] = (
-                    self.data["presence"]
-                    .get("basicPresence")
-                    .get("gameTitleInfoList")[0]
-                )
-            except Exception:
-                self.data["title_metadata"] = {}
+            presence = data["presence"]["basicPresence"]
+            data["available"] = presence.get("availability") == "availableToPlay"
+            data["platform"] = presence.get("primaryPlatformInfo") or {}
+            title_info = presence.get("gameTitleInfoList") or []
+            data["title_metadata"] = title_info[0] if title_info else {}
 
-            # self.data["friends"] = await self.client.available_to_play()
-            self.data["trophy_summary"] = await self.hass.async_add_executor_job(
-                self.client.trophy_summary
+            data["trophy_summary"] = await self._async_request(
+                "client.trophy_summary", self.client.trophy_summary
             )
-
-            self.data["country"] = self.hass.config.country
-            self.data["language"] = self.hass.config.language
+            data["country"] = self.hass.config.country
+            data["language"] = self.hass.config.language
+            data["title_details"] = {}
+            data["title_trophies"] = {}
+            data["recent_titles"] = []
 
             if (
-                self.data["available"] is True
-                and self.data["title_metadata"].get("npTitleId") is not None
+                data["available"] is True
+                and data["title_metadata"].get("npTitleId") is not None
             ):
-                title_id = self.data["title_metadata"].get("npTitleId")
-                title = await self.hass.async_add_executor_job(
+                title_id = data["title_metadata"]["npTitleId"]
+                title = await self._async_request(
+                    "api.game_title",
                     lambda: self.api.game_title(
                         title_id=title_id,
-                        platform=self.data["title_metadata"]["format"],
+                        platform=data["title_metadata"]["format"],
                         account_id="me",
-                    )
+                    ),
                 )
-                ## Attempt to pull details with user's country and language code
-                self.data["title_details"] = await self.hass.async_add_executor_job(
+                data["title_details"] = await self._async_request(
+                    "title.get_details (localized)",
                     lambda: title.get_details(
                         self.hass.config.country, self.hass.config.language
-                    )
+                    ),
                 )
-                ## If we receive an error, fall back to english
-                if self.data["title_details"][0].get("errorCode") is not None:
-                    self.data["title_details"] = await self.hass.async_add_executor_job(
-                        title.get_details
+                if data["title_details"][0].get("errorCode") is not None:
+                    data["title_details"] = await self._async_request(
+                        "title.get_details (default locale)", title.get_details
                     )
 
-                trophy_titles = await self.hass.async_add_executor_job(
-                    lambda: self.client.trophy_titles_for_title(
-                        title_ids=[title.title_id]
-                    )
+                # Iterators issue requests during consumption. Recreate and consume
+                # them in the executor so a failed iterator is never resumed.
+                trophy_titles = await self._async_request(
+                    "client.trophy_titles_for_title",
+                    lambda: list(
+                        self.client.trophy_titles_for_title(title_ids=[title.title_id])
+                    ),
                 )
-                await self.hass.async_add_executor_job(
-                    lambda: self.get_trophies(trophy_titles)
+                data["title_trophies"] = trophy_titles[-1] if trophy_titles else {}
+
+                data["recent_titles"] = await self._async_request(
+                    "client.title_stats",
+                    lambda: list(self.client.title_stats(limit=3, page_size=3)),
                 )
 
-                titles_with_stats = await self.hass.async_add_executor_job(
-                    lambda: self.client.title_stats(limit=3, page_size=3)
-                )
-                await self.hass.async_add_executor_job(
-                    lambda: self.get_titles(titles_with_stats)
-                )
-
-            return self.data
-        except PSNAWPAuthenticationError as error:
-            raise ConfigEntryAuthFailed(error) from error
-        except Exception as ex:
+            return data
+        except (
+            PSNAWPAuthenticationError,
+            PSNAWPInvalidTokenError,
+            PSNAWPUnauthorizedError,
+        ) as error:
+            raise ConfigEntryAuthFailed(
+                f"{self._operation}: PSN authentication failed ({type(error).__name__})"
+            ) from error
+        except PSNAWPForbiddenError as error:
+            # A resource/privacy denial is not evidence of expired credentials.
             raise UpdateFailed(
-                f"Error communicating with the Playstation Network {ex}"
-            ) from ex
+                f"{self._operation}: PSN access forbidden (HTTP 403)"
+            ) from error
+        except PSNAWPTooManyRequestsError as error:
+            raise UpdateFailed(
+                f"{self._operation}: PSN rate limited (HTTP 429)",
+                retry_after=RATE_LIMIT_DELAY_SECONDS,
+            ) from error
+        except Exception as error:
+            # Do not log response bodies, account identifiers or request headers.
+            raise UpdateFailed(
+                f"{self._operation}: PSN request failed ({type(error).__name__})"
+            ) from error
 
-    def get_titles(self, titles):
-        for title in titles:
-            self.data["recent_titles"].append(title)
+    async def _async_request[T](self, operation: str, request: Callable[[], T]) -> T:
+        """Allow one extra read attempt per poll, without retrying the whole refresh.
 
-    def get_trophies(self, trophy_titles):
-        for trophy_title in trophy_titles:
-            self.data["title_trophies"] = trophy_title
+        PSNAWP 3.0.3 and its default Requests adapters have no transport/server
+        retries. All attempts still pass through PSNAWP's existing rate limiter.
+        """
+        self._operation = operation
+        try:
+            return await self.hass.async_add_executor_job(request)
+        except TRANSIENT_ERRORS as error:
+            if isinstance(error, SSLError) or not self._retry_available:
+                raise
+            self._retry_available = False
+            _LOGGER.debug(
+                "%s failed (%s); retrying once in %s seconds",
+                operation,
+                type(error).__name__,
+                RETRY_DELAY_SECONDS,
+            )
+            await asyncio.sleep(RETRY_DELAY_SECONDS)
+            return await self.hass.async_add_executor_job(request)
