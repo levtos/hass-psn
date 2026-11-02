@@ -79,6 +79,28 @@ After previously valid local evidence, a temporary discovery gap keeps the last 
 
 The optional power sensor is fallback evidence for `Offline`; it does not detect `Rest Mode`. PSN alone never creates a positive physical console state, so using the PlayStation mobile app cannot make an unreachable console appear online. Without a configured PS5 host, the existing PSN entities continue to work unchanged; the Console Status entity requires conclusive local or low-power evidence to become available.
 
+## Temporary PSN outages
+
+The integration retries a temporary connection failure, timeout, interrupted
+response, or PSN server error once after two seconds. There is at most one
+additional read attempt per polling cycle; successful earlier calls are not
+replayed. PSNAWP's existing request limiter remains in use.
+
+If the retry succeeds, entities remain available and no error is logged. If a
+refresh still fails, the last complete snapshot is retained internally and PSN
+entities become unavailable so cached values are not presented as fresh. The
+normal 30-second polling resumes automatically; a complete successful refresh
+restores availability. Home Assistant logs the first failure of an outage and
+one recovery message, suppressing repeated failures in between. Failure
+messages identify the API operation and exception category.
+
+Authentication failures and HTTP 401 request reauthentication. HTTP 403 is
+treated as a resource permission error and does not request reauthentication.
+HTTP 429 is not retried immediately: polling pauses for 15 minutes, matching
+the configured rate window, because PSNAWP 3.0.3 does not expose the server's
+`Retry-After` header. Other client errors and certificate failures do not use
+the short retry. Local Console Status discovery remains independent of PSN.
+
 ## Messages
 
 The existing `notify.playstation_network` action can send PlayStation Network messages to a user or group. Notifications are retained for compatibility but are not part of the initial HA-PSN feature focus.

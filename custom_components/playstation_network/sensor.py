@@ -472,11 +472,6 @@ class PsnSensor(PSNEntity, SensorEntity):
         self._attr_name = description.name
         self.entity_description = description
 
-    @property
-    def available(self) -> bool:
-        """Return if available."""
-        return True
-
     @callback
     def _handle_coordinator_update(self) -> None:
         """Handle updated data from the coordinator."""
@@ -687,11 +682,6 @@ class PsnAttributeSensor(PSNEntity, SensorEntity):
         )
         self._attr_name = description.name
         self.entity_description = description
-
-    @property
-    def available(self) -> bool:
-        """Return if available."""
-        return True
 
     @callback
     def _handle_coordinator_update(self) -> None:
