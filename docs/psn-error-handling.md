@@ -38,7 +38,7 @@ distinct client exceptions. These exceptions are siblings of
   `last_update_success=False`, and makes PSN entities unavailable. Returning
   cached data as a successful update would falsely advertise freshness.
 - HA's existing coordinator suppresses consecutive fetch errors, emits one
-  INFO recovery message, and keeps normal 30-second polling armed. No custom
+   INFO recovery message, and keeps automatic polling armed. No custom
   logging filter, availability grace period or freshness state machine is
   needed. A new outage after a genuine successful refresh can log again.
 - HTTP 401, explicit authentication failure and invalid-token errors trigger

@@ -89,7 +89,9 @@ replayed. PSNAWP's existing request limiter remains in use.
 If the retry succeeds, entities remain available and no error is logged. If a
 refresh still fails, the last complete snapshot is retained internally and PSN
 entities become unavailable so cached values are not presented as fresh. The
-normal 30-second polling resumes automatically; a complete successful refresh
+automatic polling continues; consecutive server failures gradually delay the
+next poll to at most five minutes. A complete successful refresh restores
+the normal 30-second interval and
 restores availability. Home Assistant logs the first failure of an outage and
 one recovery message, suppressing repeated failures in between. Failure
 messages identify the API operation and exception category.

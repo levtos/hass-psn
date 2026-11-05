@@ -25,8 +25,8 @@ from pyrate_limiter import Duration, Rate
 
 from .const import (
     CONF_EXPOSE_ATTRIBUTES_AS_ENTITIES,
-    CONF_PS5_HOST,
     CONF_POWER_SENSOR,
+    CONF_PS5_HOST,
     CONF_REST_MODE_THRESHOLD,
     DEFAULT_REST_MODE_THRESHOLD,
     DOMAIN,
@@ -56,7 +56,7 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
         user = await hass.async_add_executor_job(lambda: psn.user(online_id="me"))
         client = psn.me()
         coordinator = PsnCoordinator(hass, psn, user, client)
-        await coordinator._async_update_data()
+        coordinator.data = await coordinator._async_update_data()
     except PSNAWPAuthenticationError as error:
         raise ConfigEntryAuthFailed(error) from error
     except Exception as ex:
@@ -75,7 +75,6 @@ class PlaystationNetworkConfigFlow(ConfigFlow, domain=DOMAIN):
     """Handle a config flow for Playstation Network."""
 
     VERSION = 3
-    CONNECTION_CLASS = config_entries.CONN_CLASS_CLOUD_POLL
 
     reauth_entry: ConfigEntry | None = None
 

@@ -67,6 +67,7 @@ class PsnCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.api = api
         self.user = user
         self.client = client
+        self._server_failures = 0
         self.data = {
             "presence": {},
             "available": False,
@@ -154,26 +155,37 @@ class PsnCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     lambda: list(self.client.title_stats(limit=3, page_size=3)),
                 )
 
+            self._server_failures = 0
             return data
         except (
             PSNAWPAuthenticationError,
             PSNAWPInvalidTokenError,
             PSNAWPUnauthorizedError,
         ) as error:
+            self._server_failures = 0
             raise ConfigEntryAuthFailed(
                 f"{self._operation}: PSN authentication failed ({type(error).__name__})"
             ) from error
         except PSNAWPForbiddenError as error:
+            self._server_failures = 0
             # A resource/privacy denial is not evidence of expired credentials.
             raise UpdateFailed(
                 f"{self._operation}: PSN access forbidden (HTTP 403)"
             ) from error
         except PSNAWPTooManyRequestsError as error:
+            self._server_failures = 0
             raise UpdateFailed(
                 f"{self._operation}: PSN rate limited (HTTP 429)",
                 retry_after=RATE_LIMIT_DELAY_SECONDS,
             ) from error
+        except PSNAWPServerError as error:
+            self._server_failures = min(self._server_failures + 1, 5)
+            raise UpdateFailed(
+                f"{self._operation}: PSN request failed (PSNAWPServerError)",
+                retry_after=min(30 * 2 ** (self._server_failures - 1), 300),
+            ) from error
         except Exception as error:
+            self._server_failures = 0
             # Do not log response bodies, account identifiers or request headers.
             raise UpdateFailed(
                 f"{self._operation}: PSN request failed ({type(error).__name__})"
