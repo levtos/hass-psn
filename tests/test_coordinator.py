@@ -176,6 +176,67 @@ async def test_only_one_retry_budget_for_entire_poll(psn):
     assert not psn.coordinator.last_update_success
 
 
+@pytest.mark.parametrize(
+    "owner,operation",
+    [
+        ("client", "trophy_summary"),
+        ("client", "trophy_titles_for_title"),
+        ("api", "game_title"),
+    ],
+)
+async def test_reported_server_operations_back_off_and_recover(psn, owner, operation):
+    method = getattr(getattr(psn, owner), operation)
+    await psn.coordinator.async_refresh()
+    previous = psn.coordinator.data
+    method.side_effect = PSNAWPServerError("Internal Server error")
+    for delay in (30, 60, 120, 240, 300, 300):
+        await psn.coordinator.async_refresh()
+        assert psn.coordinator.last_exception.retry_after == delay
+        assert psn.coordinator.data is previous
+        assert not psn.coordinator.last_update_success
+    method.side_effect = None
+    await psn.coordinator.async_refresh()
+    assert psn.coordinator.last_update_success
+    assert psn.coordinator._server_failures == 0
+    assert psn.coordinator.update_interval.total_seconds() == 30
+
+
+async def test_config_flow_uses_manifest_and_returned_snapshot(
+    psn, monkeypatch, caplog
+):
+    from pathlib import Path
+
+    from custom_components.playstation_network import config_flow
+
+    api = Mock()
+    api.user.return_value = psn.user
+    api.me.return_value = psn.client
+    api.game_title = psn.api.game_title
+    monkeypatch.setattr(config_flow, "PSNAWP", Mock(return_value=api))
+    result = await config_flow.validate_input(psn.hass, {"npsso": "test-only"})
+    assert result["username"] == "test-account"
+    manifest = json.loads(
+        (Path(config_flow.__file__).with_name("manifest.json")).read_text()
+    )
+    assert manifest["iot_class"] == "cloud_polling"
+    assert "deprecated constant" not in caplog.text
+
+
+async def test_real_sqlite_limiter_enforces_capacity(tmp_path):
+    from pyrate_limiter import Duration, Limiter, Rate
+    from pyrate_limiter.buckets.sqlite_bucket import SQLiteBucket
+
+    bucket = SQLiteBucket.init_from_file(
+        [Rate(1, Duration.MINUTE)], db_path=str(tmp_path / "rate.db")
+    )
+    limiter = Limiter(bucket)
+    try:
+        assert limiter.try_acquire("test", blocking=False)
+        assert not limiter.try_acquire("test", blocking=False)
+    finally:
+        limiter.close()
+
+
 @pytest.mark.parametrize("operation", ["trophy_titles_for_title", "title_stats"])
 async def test_lazy_iterator_is_recreated_and_partial_result_discarded(psn, operation):
     def interrupted():
